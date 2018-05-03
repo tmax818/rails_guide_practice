@@ -246,3 +246,141 @@ Go ahead now and create a new file at app/views/articles/new.html.erb and write 
 ```
 
 When you refresh http://localhost:3000/articles/new you'll now see that the page has a title. The route, controller, action and view are now working harmoniously! It's time to create the form for a new article.
+
+### 5.2 The first form
+
+To create a form within this template, you will use a form builder. The primary form builder for Rails is provided by a helper method called `form_with`. To use this method, add this code into `app/views/articles/new.html.erb:`
+
+```
+<%= form_with scope: :article, local: true do |form| %>
+  <p>
+    <%= form.label :title %><br>
+    <%= form.text_field :title %>
+  </p>
+
+  <p>
+    <%= form.label :text %><br>
+    <%= form.text_area :text %>
+  </p>
+
+  <p>
+    <%= form.submit %>
+  </p>
+<% end %>
+```
+If you refresh the page now, you'll see the exact same form from our example above. Building forms in Rails is really just that easy!
+
+When you call `form_with`, you pass it an identifying scope for this form. In this case, it's the symbol `:article`. This tells the `form_with` helper what this form is for. Inside the block for this method, the `FormBuilder` object - represented by `form` - is used to build two labels and two text fields, one each for the title and text of an article. Finally, a call to `submit` on the `form` object will create a submit button for the form.
+
+There's one problem with this form though. If you inspect the HTML that is generated, by viewing the source of the page, you will see that the `action` attribute for the form is pointing at `/articles/new`. This is a problem because this route goes to the very page that you're on right at the moment, and that route should only be used to display the form for a new article.
+
+The form needs to use a different URL in order to go somewhere else. This can be done quite simply with the `:url` option of `form_with`. Typically in Rails, the action that is used for new form submissions like this is called "create", and so the form should be pointed to that action.
+
+Edit the `form_with` line inside `app/views/articles/new.html.erb` to look like this:
+```
+<%= form_with scope: :article, url: articles_path, local: true do |form| %>
+```
+In this example, the `articles_path` helper is passed to the :`url` option. To see what Rails will do with this, we look back at the output of `bin/rails routes:`
+```
+$ bin/rails routes
+      Prefix Verb   URI Pattern                  Controller#Action
+welcome_index GET    /welcome/index(.:format)     welcome#index
+     articles GET    /articles(.:format)          articles#index
+              POST   /articles(.:format)          articles#create
+  new_article GET    /articles/new(.:format)      articles#new
+ edit_article GET    /articles/:id/edit(.:format) articles#edit
+      article GET    /articles/:id(.:format)      articles#show
+              PATCH  /articles/:id(.:format)      articles#update
+              PUT    /articles/:id(.:format)      articles#update
+              DELETE /articles/:id(.:format)      articles#destroy
+         root GET    /                            welcome#index
+```
+The articles_path helper tells Rails to point the form to the URI Pattern associated with the articles prefix; and the form will (by default) send a POST request to that route. This is associated with the create action of the current controller, the ArticlesController.
+
+With the form and its associated route defined, you will be able to fill in the form and then click the submit button to begin the process of creating a new article, so go ahead and do that. When you submit the form, you should see a familiar error:
+
+![](http://guides.rubyonrails.org/images/getting_started/unknown_action_create_for_articles.png)
+
+You now need to create the create action within the `ArticlesController` for this to work.
+
+> By default `form_with` submits forms using Ajax thereby skipping full page redirects. To make this guide easier to get into we've disabled that with `local: true` for now.
+
+
+### 5.3 Creating articles
+To make the "Unknown action" go away, you can define a create action within the `ArticlesController` class in `app/controllers/articles_controller.rb`, underneath the  new action, as shown:
+
+```
+class ArticlesController < ApplicationController
+  def new
+  end
+
+  def create
+  end
+end
+```
+
+If you re-submit the form now, you may not see any change on the page. Don't worry! This is because Rails by default returns `204 No Content` response for an action if we don't specify what the response should be. We just added the create action but didn't specify anything about how the response should be. In this case, the create action should save our new article to the database.
+
+When a form is submitted, the fields of the form are sent to Rails as parameters. These parameters can then be referenced inside the controller actions, typically to perform a particular task. To see what these parameters look like, change the `create` action to this:
+```
+def create
+  render plain: params[:article].inspect
+end
+```
+The render method here is taking a very simple hash with a key of `:plain` and value of `params[:article].inspect.` The params method is the object which represents the parameters (or fields) coming in from the form. The params method returns an `ActionController::Parameters` object, which allows you to access the keys of the hash using either strings or symbols. In this situation, the only parameters that matter are the ones from the form.
+
+> Ensure you have a firm grasp of the params method, as you'll use it fairly regularly. Let's consider an example URL: http://www.example.com/?username=dhh&email=dhh@email.com. In this URL, params[:username] would equal "dhh" and params[:email] would equal "dhh@email.com".
+
+If you re-submit the form one more time, you'll see something that looks like the following:
+
+```
+<ActionController::Parameters {"title"=>"First Article!", "text"=>"This is my first article."} permitted: false>
+```
+
+This action is now displaying the parameters for the article that are coming in from the form. However, this isn't really all that helpful. Yes, you can see the parameters but nothing in particular is being done with them.
+
+### 5.4 Creating the Article model
+Models in Rails use a singular name, and their corresponding database tables use a plural name. Rails provides a generator for creating models, which most Rails developers tend to use when creating new models. To create the new model, run this command in your terminal:
+```
+$ bin/rails generate model Article title:string text:text
+```
+With that command we told Rails that we want an `Article` model, together with a title attribute of type string, and a text attribute of type text. Those attributes are automatically added to the `articles` table in the database and mapped to the `Article` model.
+
+Rails responded by creating a bunch of files. For now, we're only interested in `app/models/article.rb and db/migrate/20140120191729_create_articles.rb `(your name could be a bit different). The latter is responsible for creating the database structure, which is what we'll look at next.
+
+> Active Record is smart enough to automatically map column names to model attributes, which means you don't have to declare attributes inside Rails models, as that will be done automatically by Active Record.
+
+### 5.5 Running a Migration
+
+As we've just seen, `bin/rails generate` model created a _database migration_ file inside the db/migrate directory. Migrations are Ruby classes that are designed to make it simple to create and modify database tables. Rails uses rake commands to run migrations, and it's possible to undo a migration after it's been applied to your database. Migration filenames include a timestamp to ensure that they're processed in the order that they were created.
+
+If you look in the `db/migrate/YYYYMMDDHHMMSS_create_articles.rb` file (remember, yours will have a slightly different name), here's what you'll find:
+```
+class CreateArticles < ActiveRecord::Migration[5.0]
+  def change
+    create_table :articles do |t|
+      t.string :title
+      t.text :text
+
+      t.timestamps
+    end
+  end
+end
+```
+The above migration creates a method named change which will be called when you run this migration. The action defined in this method is also reversible, which means Rails knows how to reverse the change made by this migration, in case you want to reverse it later. When you run this migration it will create an articles table with one string column and a text column. It also creates two timestamp fields to allow Rails to track article creation and update times.
+
+> For more information about migrations, refer to [Active Record Migrations](http://guides.rubyonrails.org/active_record_migrations.html).
+
+At this point, you can use a bin/rails command to run the migration:
+```
+$ bin/rails db:migrate
+```
+Rails will execute this migration command and tell you it created the Articles table.
+```
+==  CreateArticles: migrating ==================================================
+-- create_table(:articles)
+   -> 0.0019s
+==  CreateArticles: migrated (0.0020s) =========================================
+```
+
+Because you're working in the development environment by default, this command will apply to the database defined in the development section of your `config/database.yml` file. If you would like to execute migrations in another environment, for instance in production, you must explicitly pass it when invoking the command: `bin/rails db:migrate RAILS_ENV=production`.
